@@ -7,9 +7,9 @@ class Config {
   /// The package name of the app
   static const String packageName = 'com.nightmare.code';
 
-  static const String versionName = String.fromEnvironment('VERSION');
-  static const String defaultCodeServerVersion = product ? String.fromEnvironment('CSVERSION') : debugCSV;
-  static String codeServerVersion = defaultCodeServerVersion;
+  static const String versionName = debugCSV;
+  static const String defaultCodeServerVersion = debugCSV;
+  static String codeServerVersion = debugCSV;
 
   static int port = 20000;
 
