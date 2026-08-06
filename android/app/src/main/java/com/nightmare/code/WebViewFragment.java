@@ -26,6 +26,14 @@ import androidx.fragment.app.Fragment;
 
 public class WebViewFragment extends Fragment {
 
+    public static WebViewFragment newInstance(int port) {
+        WebViewFragment fragment = new WebViewFragment();
+        Bundle args = new Bundle();
+        args.putInt("port", port);
+        fragment.setArguments(args);
+        return fragment;
+    }
+
     OrientationListener myOrientoinListener;
 
     @Nullable
@@ -90,7 +98,11 @@ public class WebViewFragment extends Fragment {
                 return true;
             }
         });
-        mWebView.loadUrl("http://127.0.0.1:20000");
+        int port = 20000;
+        if (getArguments() != null) {
+            port = getArguments().getInt("port", 20000);
+        }
+        mWebView.loadUrl("http://127.0.0.1:" + port);
         return mWebView;
     }
 

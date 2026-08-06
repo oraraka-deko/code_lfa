@@ -1,13 +1,14 @@
 import 'package:global_repository/global_repository.dart';
 import 'config.dart';
 import 'generated/l10n.dart';
+import 'workspace.dart';
 
 // proot distro，ubuntu path
-String prootDistroPath = '${RuntimeEnvir.usrPath}/var/lib/proot-distro';
-String ubuntuPath = '$prootDistroPath/installed-rootfs/ubuntu';
-String ubuntuName = Config.ubuntuFileName.replaceAll(RegExp('-pd.*'), '');
+String get prootDistroPath => '${RuntimeEnvir.usrPath}/var/lib/proot-distro';
+String get ubuntuPath => '$prootDistroPath/installed-rootfs/${Config.activeWorkspaceId}';
+String get ubuntuName => Config.ubuntuFileName.replaceAll(RegExp('-pd.*'), '');
 
-String common = '''
+String get common => '''
 export TMPDIR=${RuntimeEnvir.tmpPath}
 export BIN=${RuntimeEnvir.binPath}
 export UBUNTU_PATH=$ubuntuPath
@@ -18,6 +19,8 @@ export CSVERSION=${Config.codeServerVersion}
 export L_NOT_INSTALLED=${S.current.uninstalled}
 export L_INSTALLING=${S.current.installing}
 export L_INSTALLED=${S.current.installed}
+export WORKSPACE_ID=${Config.activeWorkspaceId}
+export WORKSPACE_TYPE=${WorkspaceManager.activeWorkspace?.type ?? 'vscode'}
 clear_lines(){
   printf "\\033[1A" # Move cursor up one line
   printf "\\033[K"  # Clear the line
@@ -68,6 +71,9 @@ EOF
 /// 安装ubuntu的shell
 String genCodeConfig = r'''
 gen_code_server_config(){
+  if [ "$WORKSPACE_TYPE" != "vscode" ]; then
+    return
+  fi
   mkdir -p $UBUNTU_PATH/root/.config/code-server 2>/dev/null
   echo "
   bind-addr: 0.0.0.0:$CSPORT
@@ -153,6 +159,10 @@ String genFixCodeServerHardLinkShell(Map<String, String> map) {
 // TODO(Lin): 用 ESC 7 8 来实现，不然在手机上仍然会打印出很多行
 String installVSCodeServer = r'''
 install_vs_code(){
+  if [ "$WORKSPACE_TYPE" != "vscode" ]; then
+    progress_echo "Bypassing VS Code installation (Shell Only Mode)"
+    return
+  fi
   if [ ! -d "$UBUNTU_PATH/opt/code-server-$CSVERSION-linux-arm64" ];then
     tar zxfh $TMPDIR/code-server-$CSVERSION-linux-arm64.tar.gz -C $UBUNTU_PATH/opt | while read line; do
       echo -ne "\033[2K\r$line"
@@ -168,11 +178,15 @@ install_vs_code(){
 
 String loginUbuntu = r'''
 login_ubuntu(){
-  bash $BIN/proot-distro login --bind /storage/emulated/0:/sdcard/ ubuntu --isolated  -- /opt/code-server-$CSVERSION-linux-arm64/bin/code-server
+  if [ "$WORKSPACE_TYPE" = "vscode" ]; then
+    bash $BIN/proot-distro login --bind /storage/emulated/0:/sdcard/ $WORKSPACE_ID --isolated  -- /opt/code-server-$CSVERSION-linux-arm64/bin/code-server
+  else
+    bash $BIN/proot-distro login --bind /storage/emulated/0:/sdcard/ $WORKSPACE_ID --isolated
+  fi
 }
 ''';
 
-String commonScript = '''
+String get commonScript => '''
 $common
 $changeUbuntuNobleSource
 $installVSCodeServer
@@ -183,6 +197,9 @@ $installProotDistro
 clear_lines
 start_vs_code(){
   install_proot_distro
+  if [ ! -f "\$BIN/../etc/proot-distro/\$WORKSPACE_ID.sh" ]; then
+    cp "\$BIN/../etc/proot-distro/ubuntu.sh" "\$BIN/../etc/proot-distro/\$WORKSPACE_ID.sh"
+  fi
   # return
   sleep 1
   bump_progress

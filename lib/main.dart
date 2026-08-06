@@ -7,12 +7,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get/get.dart';
 import 'package:global_repository/global_repository.dart';
 import 'package:settings/settings.dart';
-import 'package:code_lfa/terminal_page.dart';
+import 'package:code_lfa/workspace_list_page.dart';
 import 'generated/l10n.dart';
-
+import 'package:code_forge/code_forge.dart';
 // Notice: behavior will submit Device
 
 Future<void> main() async {
+  await RustLib.init();
   WidgetsFlutterBinding.ensureInitialized();
   // 隐藏系统 UI
   // Hide system UI
@@ -51,7 +52,7 @@ class CodeLFA extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: S.delegate.supportedLocales,
-      home: TerminalPage(),
+      home: const WorkspaceListPage(),
     );
   }
 }

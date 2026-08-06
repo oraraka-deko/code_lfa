@@ -10,6 +10,7 @@ import 'config.dart';
 import 'generated/l10n.dart';
 import 'script.dart';
 import 'utils.dart';
+import 'workspace.dart';
 
 class HomeController extends GetxController {
   bool vsCodeStaring = false;
@@ -25,6 +26,7 @@ class HomeController extends GetxController {
     },
   );
   bool webviewHasOpen = false;
+  bool get isShellOnly => WorkspaceManager.activeWorkspace?.type == 'shell';
 
   File progressFile = File('${RuntimeEnvir.tmpPath}/progress');
   File progressDesFile = File('${RuntimeEnvir.tmpPath}/progress_des');
@@ -55,20 +57,30 @@ class HomeController extends GetxController {
   // 监听输出，当输出中包含启动成功的标志时，启动 Code Server
   // Listen for output and start the Code Server when the success flag is detected
   Future<void> vsCodeStartWhenSuccessBind() async {
-    terminal.writeProgress('${S.current.listen_vscode_start}...');
+    if (isShellOnly) {
+      terminal.writeProgress('Launching Shell...');
+    } else {
+      terminal.writeProgress('${S.current.listen_vscode_start}...');
+    }
     final Completer completer = Completer();
     Utf8Decoder decoder = const Utf8Decoder(allowMalformed: true);
     pseudoTerminal!.output.cast<List<int>>().transform(decoder).listen((event) async {
-      if (event.contains('http://0.0.0.0:${Config.port}')) {
-        Log.e(event);
+      if (isShellOnly) {
         if (!completer.isCompleted) {
           completer.complete();
         }
-      }
-      if (event.contains('already')) {
-        Log.e(event);
-        if (!completer.isCompleted) {
-          completer.complete();
+      } else {
+        if (event.contains('http://0.0.0.0:${Config.port}')) {
+          Log.e(event);
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        }
+        if (event.contains('already')) {
+          Log.e(event);
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
         }
       }
       terminal.write(event);
@@ -76,8 +88,10 @@ class HomeController extends GetxController {
     await completer.future;
     bumpProgress();
     await Future.delayed(const Duration(milliseconds: 100));
-    webviewHasOpen = true;
-    openWebView();
+    if (!isShellOnly) {
+      webviewHasOpen = true;
+      openWebView(port: Config.port);
+    }
     Future.delayed(const Duration(milliseconds: 2000), () {
       vsCodeStaring = false;
       update();
@@ -201,6 +215,13 @@ class HomeController extends GetxController {
   }
 
   Future<void> loadCodeServer() async {
+    vsCodeStaring = true;
+    update();
+    final activeWS = WorkspaceManager.activeWorkspace;
+    if (activeWS != null) {
+      Config.activeWorkspaceId = activeWS.id;
+      Config.port = activeWS.port;
+    }
     loadCodeVersion();
     bumpProgress();
     // 创建相关文件夹
@@ -287,12 +308,15 @@ class HomeController extends GetxController {
     // For Google Play
     Future.delayed(Duration.zero, () async {
       if (privacySetting.get() == null) {
-        await Get.to(PrivacyAgreePage(
-          onAgreeTap: () {
-            privacySetting.set(true);
-            Get.back();
-          },
-        ));
+                    privacySetting.set(true);
+
+        // await Get.to(PrivacyAgreePage(
+        //   onAgreeTap: () {
+        //     privacySetting.set(true);
+        //     Get.back();
+        //   },
+       // )
+       // );
       }
       syncProgress();
       loadCodeServer();

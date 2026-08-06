@@ -76,8 +76,8 @@ MethodChannel _channel = const MethodChannel('vscode_channel');
 
 /// 打开 WebView
 /// Opens the WebView
-void openWebView() {
-  _channel.invokeMethod('open_webview');
+void openWebView({int port = 20000}) {
+  _channel.invokeMethod('open_webview', {'port': port});
 }
 
 /// 获取 Apk So 库路径

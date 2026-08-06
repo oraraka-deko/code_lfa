@@ -33,9 +33,10 @@ public class MainActivity extends FragmentActivity {
         new MethodChannel(flutterEngine.getDartExecutor().getBinaryMessenger(), "vscode_channel").setMethodCallHandler((call, result) -> {
             switch (call.method) {
                 case "open_webview": {
+                    final Integer port = call.argument("port") != null ? (Integer) call.argument("port") : 20000;
                     runOnUiThread(() -> {
                         fragmentManager.beginTransaction()
-                                .replace(R.id.fl_container, new WebViewFragment())
+                                .replace(R.id.fl_container, WebViewFragment.newInstance(port))
                                 .commit();
                         result.success("success");
                     });

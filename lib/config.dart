@@ -13,5 +13,7 @@ class Config {
 
   static int port = 20000;
 
+  static String activeWorkspaceId = 'ubuntu';
+
   static String ubuntuFileName = 'ubuntu-noble-aarch64-pd-v4.18.0.tar.xz';
 }
