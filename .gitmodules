@@ -4,3 +4,18 @@
 [submodule "settings"]
 	path = settings
 	url = https://github.com/nightmare-space/settings
+[submodule "xterm.dart"]
+	path = xterm.dart
+	url = https://github.com/TerminalStudio/xterm.dart
+[submodule "flutter_pty"]
+	path = flutter_pty
+	url = https://github.com/TerminalStudio/flutter_pty
+[submodule "empty_package"]
+	path = empty_package
+	url = https://github.com/nightmare-space/empty_package
+[submodule "signale"]
+	path = signale
+	url = https://github.com/nightmare-space/signale
+[submodule "code_forge"]
+	path = code_forge
+	url = https://github.com/heckmon/code_forge.git
