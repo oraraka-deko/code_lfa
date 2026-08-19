@@ -26,4 +26,4 @@ dependency_overrides:
   test_api: ^0.7.8
   code_forge: 
      path: ./code_forge
-  vector_math: ^2.2.0
+  vector_math: 2.1.4
