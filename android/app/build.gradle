@@ -15,7 +15,7 @@ if (hasKeyProperties) {
 android {
     namespace 'com.nightmare.code'
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"
     compileOptions {
         sourceCompatibility = 17
         targetCompatibility = 17

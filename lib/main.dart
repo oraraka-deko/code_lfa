@@ -29,12 +29,11 @@ Future<void> main() async {
     systemNavigationBarDividerColor: Colors.transparent,
   ));
   RuntimeEnvir.initEnvirWithPackageName('com.nightmare.code');
-  final ws = WorkspaceProvider.instance;
-
   await initSettingStore(RuntimeEnvir.configPath);
-  runApp( MultiProvider(
-      providers: [ ChangeNotifierProvider.value(value: WorkspaceProvider.instance)],
-       child:  const CodeLFA()));
+  runApp(MultiProvider(
+    providers: [ChangeNotifierProvider.value(value: WorkspaceProvider.instance)],
+    child: const CodeLFA(),
+  ));
   initApi('Code LFA', Config.versionName);
 }
 
