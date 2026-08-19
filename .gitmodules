@@ -1,21 +1,22 @@
 [submodule "global_repository"]
 	path = global_repository
-	url = https://github.com/nightmare-space/global_repository
+	url = https://github.com/oraraka-deko/global_repository
 [submodule "settings"]
 	path = settings
-	url = https://github.com/nightmare-space/settings
+	url = https://github.com/oraraka-deko/settings
 [submodule "xterm.dart"]
 	path = xterm.dart
-	url = https://github.com/TerminalStudio/xterm.dart
+	url = https://github.com/oraraka-deko/xterm.dart
 [submodule "flutter_pty"]
 	path = flutter_pty
-	url = https://github.com/TerminalStudio/flutter_pty
+	url = https://github.com/oraraka-deko/flutter_pty
 [submodule "empty_package"]
 	path = empty_package
-	url = https://github.com/nightmare-space/empty_package
+	url = https://github.com/oraraka-deko/empty_package
 [submodule "signale"]
 	path = signale
-	url = https://github.com/nightmare-space/signale
+	url = https://github.com/oraraka-deko/signale
 [submodule "code_forge"]
 	path = code_forge
-	url = https://github.com/heckmon/code_forge.git
+	url = https://github.com/oraraka-deko/code_forge.git
+

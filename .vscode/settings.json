@@ -9,5 +9,6 @@
         "editor.insertSpaces": true,
         "editor.detectIndentation": false,
         "editor.defaultFormatter": "vscode.json-language-features"
-    }
+    },
+    "dart.flutterSdkPath": "E:\\flutter_windows_3.29.3-stable\\flutter40"
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import 'workspace.dart';
+import 'workspace_provider.dart';
 import 'terminal_page.dart';
 
 class WorkspaceListPage extends StatefulWidget {
@@ -12,20 +14,16 @@ class WorkspaceListPage extends StatefulWidget {
 }
 
 class _WorkspaceListPageState extends State<WorkspaceListPage> {
-  bool _loading = true;
+  final WorkspaceProvider _provider = WorkspaceProvider.instance;
 
   @override
   void initState() {
     super.initState();
-    _loadWorkspaces();
+    _provider.load();
   }
 
   Future<void> _loadWorkspaces() async {
-    setState(() => _loading = true);
-    await WorkspaceManager.load();
-    if (mounted) {
-      setState(() => _loading = false);
-    }
+    await _provider.load();
   }
 
   void _createNewWorkspace() {
@@ -109,31 +107,74 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
   void _confirmDeleteWorkspace(Workspace workspace) {
     Get.dialog(
       AlertDialog(
-        title: const Text(
-          'Delete Workspace?',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Theme.of(context).colorScheme.error),
+            const SizedBox(width: 8),
+            const Text(
+              'Delete Workspace?',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
         ),
-        content: Text(
-          'Are you sure you want to delete "${workspace.name}"?\n\n'
-          'This will permanently delete its Ubuntu container, installed packages, and all local files in this workspace.',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Are you sure you want to delete "${workspace.name}"?',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'This will programmatically purge and free all container files, Ubuntu rootfs, and installed packages from internal storage.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                'Container ID: ${workspace.id} • Port: ${workspace.port}',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontFamily: 'monospace',
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () => Get.back(),
             child: const Text('Cancel'),
           ),
-          ElevatedButton(
+          ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
             ),
+            icon: const Icon(Icons.delete_forever_rounded, size: 18),
+            label: const Text('Delete Container'),
             onPressed: () async {
               Get.back();
-              setState(() => _loading = true);
-              await WorkspaceManager.deleteWorkspace(workspace);
-              _loadWorkspaces();
+              final result = await showDialog<bool>(
+                context: context,
+                barrierDismissible: false,
+                builder: (context) => WorkspaceDeleteProgressDialog(workspace: workspace),
+              );
+              if (result == true) {
+                _loadWorkspaces();
+              }
             },
-            child: const Text('Delete'),
           ),
         ],
       ),
@@ -142,10 +183,53 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
 
   void _launchWorkspace(Workspace workspace) {
     WorkspaceManager.activeWorkspace = workspace;
-    Get.to(() => const TerminalPage())?.then((_) {
-      // Reload lists or clean up when returning
-      _loadWorkspaces();
+    Get.to(() => TerminalPage(workspace: workspace))?.then((_) {
+      if (mounted) {
+        setState(() {});
+      }
     });
+  }
+
+  void _confirmStopWorkspace(Workspace workspace) {
+    Get.dialog(
+      AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.power_settings_new_rounded, color: Colors.orange),
+            SizedBox(width: 8),
+            Text(
+              'Stop Workspace?',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: Text(
+          'Do you want to stop "${workspace.name}"?\n\n'
+          'All running container processes will be stopped. Your files and installed packages will remain saved on disk and you can start it again at any time.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Get.back();
+              await WorkspaceManager.stopWorkspace(workspace.id);
+              if (mounted) {
+                setState(() {});
+              }
+            },
+            child: const Text('Stop Workspace'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -153,26 +237,29 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Code FA Workspaces',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        centerTitle: true,
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : WorkspaceManager.workspaces.isEmpty
-              ? _buildEmptyState()
-              : _buildWorkspaceList(colorScheme),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _createNewWorkspace,
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('New Workspace'),
-      ),
+    return Consumer<WorkspaceProvider>(builder: (context, provider, child) {
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text(
+              'Code LFA Workspaces',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            centerTitle: true,
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+          ),
+          body: _provider.isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _provider.workspaces.isEmpty
+                  ? _buildEmptyState()
+                  : _buildWorkspaceList(colorScheme),
+          floatingActionButton: FloatingActionButton.extended(
+            onPressed: _createNewWorkspace,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('New Workspace'),
+          ),
+        );
+      },
     );
   }
 
@@ -186,7 +273,7 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
             Icon(
               Icons.developer_board_off_rounded,
               size: 80,
-              color: Theme.of(context).colorScheme.outline.withOpacity(0.5),
+              color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
             ),
             const SizedBox(height: 24),
             const Text(
@@ -222,6 +309,8 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
       itemCount: WorkspaceManager.workspaces.length,
       itemBuilder: (context, index) {
         final workspace = WorkspaceManager.workspaces[index];
+        final isRunning = WorkspaceManager.isWorkspaceRunning(workspace.id);
+
         DateTime? createDate;
         try {
           createDate = DateTime.parse(workspace.createTime);
@@ -234,12 +323,14 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
         return Card(
           key: ValueKey(workspace.id),
           margin: const EdgeInsets.only(bottom: 12),
-          elevation: 1,
+          elevation: isRunning ? 2 : 1,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
             side: BorderSide(
-              color: colorScheme.outlineVariant.withOpacity(0.5),
-              width: 1,
+              color: isRunning
+                  ? Colors.green.withValues(alpha: 0.5)
+                  : colorScheme.outlineVariant.withValues(alpha: 0.5),
+              width: isRunning ? 1.5 : 1,
             ),
           ),
           child: InkWell(
@@ -249,19 +340,40 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: workspace.type == 'shell'
-                        ? colorScheme.secondaryContainer
-                        : colorScheme.primaryContainer,
-                    child: Icon(
-                      workspace.type == 'shell'
-                          ? Icons.terminal_rounded
-                          : Icons.code_rounded,
-                      color: workspace.type == 'shell'
-                          ? colorScheme.onSecondaryContainer
-                          : colorScheme.onPrimaryContainer,
-                    ),
+                  Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 24,
+                        backgroundColor: workspace.type == 'shell'
+                            ? colorScheme.secondaryContainer
+                            : colorScheme.primaryContainer,
+                        child: Icon(
+                          workspace.type == 'shell'
+                              ? Icons.terminal_rounded
+                              : Icons.code_rounded,
+                          color: workspace.type == 'shell'
+                              ? colorScheme.onSecondaryContainer
+                              : colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                      if (isRunning)
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 12,
+                            height: 12,
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: colorScheme.surface,
+                                width: 2,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -270,11 +382,15 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
                       children: [
                         Row(
                           children: [
-                            Text(
-                              workspace.name,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
+                            Flexible(
+                              child: Text(
+                                workspace.name,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             const SizedBox(width: 8),
@@ -297,6 +413,42 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
                                 ),
                               ),
                             ),
+                            if (isRunning) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: Colors.green.withValues(alpha: 0.4),
+                                    width: 0.8,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 5,
+                                      height: 5,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.green,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    const Text(
+                                      'ACTIVE',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 4),
@@ -313,20 +465,37 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
                           style: TextStyle(
                             fontSize: 11,
                             fontFamily: 'monospace',
-                            color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+                            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                           ),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.play_arrow_rounded),
-                    color: Colors.green,
-                    iconSize: 28,
-                    onPressed: () => _launchWorkspace(workspace),
-                    tooltip: 'Launch Workspace',
-                  ),
+                  if (isRunning) ...[
+                    IconButton(
+                      icon: const Icon(Icons.launch_rounded),
+                      color: Colors.green,
+                      iconSize: 26,
+                      onPressed: () => _launchWorkspace(workspace),
+                      tooltip: 'Resume Workspace',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.power_settings_new_rounded),
+                      color: Colors.orange,
+                      iconSize: 22,
+                      onPressed: () => _confirmStopWorkspace(workspace),
+                      tooltip: 'Stop Workspace',
+                    ),
+                  ] else ...[
+                    IconButton(
+                      icon: const Icon(Icons.play_arrow_rounded),
+                      color: colorScheme.primary,
+                      iconSize: 28,
+                      onPressed: () => _launchWorkspace(workspace),
+                      tooltip: 'Launch Workspace',
+                    ),
+                  ],
                   IconButton(
                     icon: const Icon(Icons.delete_outline_rounded),
                     color: colorScheme.error,
@@ -342,3 +511,208 @@ class _WorkspaceListPageState extends State<WorkspaceListPage> {
     );
   }
 }
+
+class WorkspaceDeleteProgressDialog extends StatefulWidget {
+  final Workspace workspace;
+
+  const WorkspaceDeleteProgressDialog({
+    super.key,
+    required this.workspace,
+  });
+
+  @override
+  State<WorkspaceDeleteProgressDialog> createState() => _WorkspaceDeleteProgressDialogState();
+}
+
+class _WorkspaceDeleteProgressDialogState extends State<WorkspaceDeleteProgressDialog> {
+  double _progress = 0.0;
+  String _status = 'Initializing container removal...';
+  bool _isError = false;
+  String _errorMessage = '';
+  bool _isCompleted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startDeletion();
+  }
+
+  Future<void> _startDeletion() async {
+    try {
+      await WorkspaceManager.deleteWorkspace(
+        widget.workspace,
+        onProgress: (status, progress) {
+          if (mounted) {
+            setState(() {
+              _status = status;
+              _progress = progress;
+            });
+          }
+        },
+      );
+      if (mounted) {
+        setState(() {
+          _isCompleted = true;
+          _progress = 1.0;
+          _status = 'Container removed from internal storage successfully!';
+        });
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted) {
+          Navigator.of(context).pop(true);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isError = true;
+          _errorMessage = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return PopScope(
+      canPop: _isError || _isCompleted,
+      child: Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        elevation: 6,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _isError
+                          ? colorScheme.errorContainer
+                          : _isCompleted
+                              ? Colors.green.withValues(alpha: 0.15)
+                              : colorScheme.primaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isError
+                          ? Icons.error_outline_rounded
+                          : _isCompleted
+                              ? Icons.check_circle_rounded
+                              : Icons.delete_sweep_rounded,
+                      color: _isError
+                          ? colorScheme.error
+                          : _isCompleted
+                              ? Colors.green
+                              : colorScheme.primary,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _isError
+                              ? 'Removal Failed'
+                              : _isCompleted
+                                  ? 'Removed Successfully'
+                                  : 'Removing Container',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          widget.workspace.name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              if (!_isError) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: _progress > 0 ? _progress : null,
+                    minHeight: 8,
+                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      _isCompleted ? Colors.green : colorScheme.primary,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _status,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${(_progress * 100).toInt()}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.primary,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.errorContainer.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _errorMessage,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colorScheme.error,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text('Close'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+

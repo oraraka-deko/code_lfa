@@ -7,6 +7,23 @@
 
 # The following line activates a set of recommended lints for Flutter apps,
 # packages, and plugins designed to encourage good coding practices.
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+    # - xterm.dart/**
+    # - signale/**
+    # - settings/**
+    # - libghostty/**
+    # - global_repository/**
+    # - flutter_pty/**
+    # - empty_package/**
+    # - code_forge/**
 include: package:flutter_lints/flutter.yaml
 
 linter:

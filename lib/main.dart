@@ -10,6 +10,8 @@ import 'package:settings/settings.dart';
 import 'package:code_lfa/workspace_list_page.dart';
 import 'generated/l10n.dart';
 import 'package:code_forge/code_forge.dart';
+import 'workspace_provider.dart';
+import 'package:provider/provider.dart';
 // Notice: behavior will submit Device
 
 Future<void> main() async {
@@ -27,8 +29,12 @@ Future<void> main() async {
     systemNavigationBarDividerColor: Colors.transparent,
   ));
   RuntimeEnvir.initEnvirWithPackageName('com.nightmare.code');
+  final ws = WorkspaceProvider.instance;
+
   await initSettingStore(RuntimeEnvir.configPath);
-  runApp(const CodeLFA());
+  runApp( MultiProvider(
+      providers: [ ChangeNotifierProvider.value(value: WorkspaceProvider.instance)],
+       child:  const CodeLFA()));
   initApi('Code LFA', Config.versionName);
 }
 

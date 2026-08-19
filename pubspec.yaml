@@ -24,6 +24,8 @@ dependencies:
   tar: ^2.0.0
   path: ^1.9.1
   code_forge: ^10.10.0
+  # flterm: 
+  #   path: ./libghostty/packages/flterm
   # get repo
   xterm:
     git:
@@ -39,6 +41,7 @@ dependencies:
     git:
       url: https://github.com/nightmare-space/empty_package
       path: behavior_api
+  provider: ^6.1.5+1
 
 dev_dependencies:
   flutter_test:

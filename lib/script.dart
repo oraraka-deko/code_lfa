@@ -87,6 +87,7 @@ gen_code_server_config(){
 String installUbuntu = r'''
 install_ubuntu(){
   mkdir -p $UBUNTU_PATH 2>/dev/null
+  mkdir -p $UBUNTU_PATH/root/sdcard $UBUNTU_PATH/sdcard 2>/dev/null
   if [ -z "$(ls -A $UBUNTU_PATH)" ]; then
     progress_echo "Ubuntu $L_NOT_INSTALLED, $L_INSTALLING..."
     ls ~/$UBUNTU
@@ -104,6 +105,7 @@ install_ubuntu(){
     # VERSION=`cat $UBUNTU_PATH/etc/issue 2>/dev/null | sed 's/\\n//g' | sed 's/\\l//g'`
     progress_echo "Ubuntu $L_INSTALLED -> $VERSION"
   fi
+  mkdir -p $UBUNTU_PATH/root/sdcard $UBUNTU_PATH/sdcard 2>/dev/null
   change_ubuntu_source
   echo 'nameserver 8.8.8.8' > $UBUNTU_PATH/etc/resolv.conf
 }
@@ -178,16 +180,67 @@ install_vs_code(){
 
 String loginUbuntu = r'''
 login_ubuntu(){
+  mkdir -p $UBUNTU_PATH/root/sdcard $UBUNTU_PATH/sdcard 2>/dev/null
   if [ "$WORKSPACE_TYPE" = "vscode" ]; then
-    bash $BIN/proot-distro login --bind /storage/emulated/0:/sdcard/ $WORKSPACE_ID --isolated  -- /opt/code-server-$CSVERSION-linux-arm64/bin/code-server
+    bash $BIN/proot-distro login --bind /storage/emulated/0:/sdcard/ --bind /storage/emulated/0:/root/sdcard/ $WORKSPACE_ID --isolated  -- /opt/code-server-$CSVERSION-linux-arm64/bin/code-server
   else
-    bash $BIN/proot-distro login --bind /storage/emulated/0:/sdcard/ $WORKSPACE_ID --isolated
+    bash $BIN/proot-distro login --bind /storage/emulated/0:/sdcard/ --bind /storage/emulated/0:/root/sdcard/ $WORKSPACE_ID --isolated
   fi
+}
+login_shell_tab(){
+  mkdir -p $UBUNTU_PATH/root/sdcard $UBUNTU_PATH/sdcard 2>/dev/null
+  bash $BIN/proot-distro login --bind /storage/emulated/0:/sdcard/ --bind /storage/emulated/0:/root/sdcard/ $WORKSPACE_ID --isolated
 }
 ''';
 
-String get commonScript => '''
-$common
+String get commonScript => getCommonScript(
+      WorkspaceManager.activeWorkspace ??
+          Workspace(
+            id: Config.activeWorkspaceId,
+            name: 'Default',
+            port: Config.port,
+            createTime: '',
+            type: 'vscode',
+          ),
+    );
+
+String getCommonScript(Workspace workspace) {
+  final wsUbuntuPath = '$prootDistroPath/installed-rootfs/${workspace.id}';
+  final wsCommon = '''
+export TMPDIR=${RuntimeEnvir.tmpPath}
+export BIN=${RuntimeEnvir.binPath}
+export UBUNTU_PATH=$wsUbuntuPath
+export UBUNTU=${Config.ubuntuFileName}
+export UBUNTU_NAME=$ubuntuName
+export CSPORT=${workspace.port}
+export CSVERSION=${Config.codeServerVersion}
+export L_NOT_INSTALLED=${S.current.uninstalled}
+export L_INSTALLING=${S.current.installing}
+export L_INSTALLED=${S.current.installed}
+export WORKSPACE_ID=${workspace.id}
+export WORKSPACE_TYPE=${workspace.type}
+clear_lines(){
+  printf "\\033[1A" # Move cursor up one line
+  printf "\\033[K"  # Clear the line
+  printf "\\033[1A" # Move cursor up one line
+  printf "\\033[K"  # Clear the line
+}
+progress_echo(){
+  echo -e "\\033[31m- \$@\\033[0m"
+  echo "\$@" > "\$TMPDIR/progress_des_${workspace.id}"
+}
+bump_progress(){
+  current=0
+  if [ -f "\$TMPDIR/progress_${workspace.id}" ]; then
+    current=\$(cat "\$TMPDIR/progress_${workspace.id}" 2>/dev/null || echo 0)
+  fi
+  next=\$((current + 1))
+  printf "\$next" > "\$TMPDIR/progress_${workspace.id}"
+}
+''';
+
+  return '''
+$wsCommon
 $changeUbuntuNobleSource
 $installVSCodeServer
 $genCodeConfig
@@ -215,3 +268,5 @@ start_vs_code(){
   login_ubuntu
 }
 ''';
+}
+

@@ -1,90 +1,122 @@
-name: "Build & Release"
-# see https://medium.com/@colonal/automating-flutter-builds-and-releases-with-github-actions-77ccf4a1ccdd
+name: "Build & Release APK"
 
 on:
   workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Custom build number override (leave empty to use default)'
+        required: false
+        default: ''
 
 jobs:
   build:
-    name: Build & Release
+    name: Build Android APKs
     runs-on: ubuntu-latest
     steps:
-
-      - name: Checkout Repository
-        uses: actions/checkout@v3
-
-      - name: Extract version from pubspec.yaml
-        id: extract_version
-        run: |
-          version=$(grep '^version: ' pubspec.yaml | cut -d ' ' -f 2 | tr -d '\r')
-          echo "VERSION=$version" >> $GITHUB_ENV
-          code_server=$(grep '^code_server: ' pubspec.yaml | cut -d ' ' -f 2 | tr -d '\r')
-          echo "CSVERSION=$code_server" >> $GITHUB_ENV
-
-      - name: Download code-server
-        run:  wget -O assets/code-server-${{ env.CSVERSION }}-linux-arm64.tar.gz https://github.com/coder/code-server/releases/download/v${{ env.CSVERSION }}/code-server-${{ env.CSVERSION }}-linux-arm64.tar.gz
-
-      - name: Set Up Java
-        uses: actions/setup-java@v3.12.0
+      - name: Checkout Repository with Submodules
+        uses: actions/checkout@v4
         with:
-          distribution: 'oracle'
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set Up JDK 17 (Azul Zulu)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
           java-version: '17'
+          cache: 'gradle'
+
+      - name: Set Up Rust & Cargo Environment
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
 
       - name: Set Up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.4'
+          flutter-version: '3.29.3'
           channel: 'stable'
+          cache: true
 
-      - name: Install Dependencies
-        run: flutter pub get
-
-      - name: Decode Keystore
+      - name: Extract Versions from pubspec.yaml
+        id: extract_version
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/keystore.jks
+          VERSION=$(grep '^version: ' pubspec.yaml | cut -d ' ' -f 2 | tr -d '\r')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          CSVERSION=$(grep '^code_server: ' pubspec.yaml | cut -d ' ' -f 2 | tr -d '\r')
+          echo "CSVERSION=$CSVERSION" >> $GITHUB_ENV
+          echo "Extracted App Version: $VERSION"
+          echo "Extracted Code Server Version: $CSVERSION"
 
-      - name: Create key.properties
+      - name: Ensure Assets Directory & Download Code Server
         run: |
-          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
-          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
-          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
-          echo "storeFile=keystore.jks" >> android/key.properties
+          mkdir -p assets
+          TARGET_FILE="assets/code-server-${{ env.CSVERSION }}-linux-arm64.tar.gz"
+          if [ ! -f "$TARGET_FILE" ]; then
+            echo "Downloading code-server $CSVERSION..."
+            wget -q --show-progress -O "$TARGET_FILE" \
+              "https://github.com/coder/code-server/releases/download/v${{ env.CSVERSION }}/code-server-${{ env.CSVERSION }}-linux-arm64.tar.gz" || true
+          else
+            echo "Asset already exists."
+          fi
 
-      - name: Build APK
-        run: flutter build apk --release --split-per-abi --dart-define=VERSION=${{ env.VERSION }} --dart-define=CSVERSION=${{ env.CSVERSION }}
-
-#FIXME:      - name: Check if Tag Exists
-#FIXME:        id: check_tag
-#FIXME:        run: |
-#FIXME:          if git rev-parse "v${{ env.VERSION }}" >/dev/null 2>&1; then
-#FIXME:            echo "TAG_EXISTS=true" >> $GITHUB_ENV
-#FIXME:          else
-#FIXME:            echo "TAG_EXISTS=false" >> $GITHUB_ENV
-#FIXME:          fi
-
-      - name: Modify Tag
-#FIXME:        if: env.TAG_EXISTS == 'true'
-        id: modify_tag
+      - name: Configure Keystore & Signing
         run: |
-          new_version="${{ env.VERSION }}-build-${{ github.run_number }}"
-          echo "VERSION=$new_version" >> $GITHUB_ENV
+          mkdir -p android/app
+          if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+            echo "Decoding Keystore from GitHub Secrets..."
+            echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/upload-keystore.jks
+            echo "storePassword=${{ secrets.KEYSTORE_PASSWORD || 'codelfa123' }}" > android/key.properties
+            echo "keyPassword=${{ secrets.KEY_PASSWORD || 'codelfa123' }}" >> android/key.properties
+            echo "keyAlias=${{ secrets.KEY_ALIAS || 'upload' }}" >> android/key.properties
+            echo "storeFile=upload-keystore.jks" >> android/key.properties
+          elif [ -f "android/key.properties" ] && [ -f "android/app/upload-keystore.jks" ]; then
+            echo "Local keystore & key.properties found in repository workspace."
+          else
+            echo "No keystore secret provided. Generating a fallback signing key for release..."
+            keytool -genkeypair -v \
+              -keystore android/app/upload-keystore.jks \
+              -storetype PKCS12 \
+              -alias upload \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass codelfa123 \
+              -keypass codelfa123 \
+              -dname "CN=Code LFA, OU=CI, O=CodeLFA, L=City, ST=State, C=US"
+            echo "storePassword=codelfa123" > android/key.properties
+            echo "keyPassword=codelfa123" >> android/key.properties
+            echo "keyAlias=upload" >> android/key.properties
+            echo "storeFile=upload-keystore.jks" >> android/key.properties
+          fi
 
-      - name: Rename Artifacts 
+      - name: Install Flutter Dependencies
         run: |
-          mv build/app/outputs/apk/release/app-arm64-*release.apk "build/app/outputs/apk/release/CodeFA_${{ env.VERSION }}_Android_arm64.apk"
-          mv build/app/outputs/apk/release/app-armeabi-*release.apk "build/app/outputs/apk/release/CodeFA_${{ env.VERSION }}_Android_arm_v7a.apk"
-          mv build/app/outputs/apk/release/app-x86_64-*release.apk "build/app/outputs/apk/release/CodeFA_${{ env.VERSION }}_Android_x86_64.apk"
+          flutter pub get
 
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
+      - name: Build Android Release APKs
+        run: |
+          flutter build apk --release --split-per-abi \
+            --dart-define=VERSION="${{ env.VERSION }}" \
+            --dart-define=CSVERSION="${{ env.CSVERSION }}"
+
+      - name: Organize & Rename Built APKs
+        id: organize_apks
+        run: |
+          mkdir -p output_apks
+          cd build/app/outputs/apk/release
+          for f in app-*-release.apk; do
+            if [ -f "$f" ]; then
+              arch=$(echo "$f" | sed -e 's/app-//' -e 's/-release.apk//')
+              dest="output_apks/CodeLFA_${{ env.VERSION }}_${arch}.apk"
+              cp "$f" "../../../../../$dest"
+              echo "Prepared $dest"
+            fi
+          done
+
+      - name: Upload APKs as Artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: Releases
-          path: |
-            build/app/outputs/apk/release/*_arm64.apk
-
-      - name: Create Release
-        uses: ncipollo/release-action@v1
-        with:
-          artifacts: "build/app/outputs/apk/release/*_arm64.apk"
-          tag: v${{ env.VERSION }}
-          token: ${{ secrets.TOKEN }}
+          name: CodeLFA-${{ env.VERSION }}-APKs
+          path: output_apks/*.apk
+          retention-days: 30
