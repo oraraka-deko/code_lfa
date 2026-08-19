@@ -9,21 +9,23 @@ dependency_overrides:
   # xterm:
   #   path: /Users/lori/Desktop/Nightmare/github_repo/xterm.dart
   xterm:
-   path: ./xterm.dart
+   git: https://github.com/oraraka-deko/xterm.dart
   settings:
-    path: ./settings 
+    git: https://github.com/oraraka-deko/settings 
   flutter_pty:
-    path: ./flutter_pty
+    git: https://github.com/oraraka-deko/flutter_pty
   global_repository:
-    path: ./global_repository
+    git: https://github.com/oraraka-deko/global_repository
   behavior_api:
-    path: ./empty_package/behavior_api
+    git:
+      url: https://github.com/oraraka-deko/empty_package
+      path: behavior_api
   signale:
-    path: ./signale
+    git: https://github.com/oraraka-deko/signale
   intl: 0.20.2
   permission_handler: ^11.3.1
   device_info_plus: ^10.1.2
   test_api: ^0.7.8
   code_forge: 
-     path: ./code_forge
+     git: https://github.com/oraraka-deko/code_forge.git
   vector_math: ^2.2.0

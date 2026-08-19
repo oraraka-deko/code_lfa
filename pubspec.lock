@@ -44,9 +44,11 @@ packages:
   behavior_api:
     dependency: "direct main"
     description:
-      path: "empty_package/behavior_api"
-      relative: true
-    source: path
+      path: behavior_api
+      ref: HEAD
+      resolved-ref: fe8dd31cd19d4c157875dfedfc7f82643783f926
+      url: "https://github.com/oraraka-deko/empty_package"
+    source: git
     version: "1.0.0"
   boolean_selector:
     dependency: transitive
@@ -83,9 +85,11 @@ packages:
   code_forge:
     dependency: "direct main"
     description:
-      path: code_forge
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: f239cd99056ac63d1f70aa03988869efccfc300f
+      url: "https://github.com/oraraka-deko/code_forge.git"
+    source: git
     version: "10.11.0"
   collection:
     dependency: transitive
@@ -236,9 +240,11 @@ packages:
   flutter_pty:
     dependency: "direct main"
     description:
-      path: flutter_pty
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: bfd2ce80636de500202da9665da2b11b057525e4
+      url: "https://github.com/oraraka-deko/flutter_pty"
+    source: git
     version: "0.4.2"
   flutter_rust_bridge:
     dependency: transitive
@@ -277,9 +283,11 @@ packages:
   global_repository:
     dependency: "direct main"
     description:
-      path: global_repository
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: d9dadd523f43a9b2bbf244a0c18eef63ba524877
+      url: "https://github.com/oraraka-deko/global_repository"
+    source: git
     version: "0.0.1"
   highlight:
     dependency: transitive
@@ -636,16 +644,20 @@ packages:
   settings:
     dependency: "direct main"
     description:
-      path: settings
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: aebb8eff3a53f0e870c9a6d3e6e79460a2368dba
+      url: "https://github.com/oraraka-deko/settings"
+    source: git
     version: "0.0.1"
   signale:
     dependency: "direct main"
     description:
-      path: signale
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: c20c8878c1ab4923fb3977732ee4a0ac83b09b9c
+      url: "https://github.com/oraraka-deko/signale"
+    source: git
     version: "0.0.12"
   sky_engine:
     dependency: transitive
@@ -879,9 +891,11 @@ packages:
   xterm:
     dependency: "direct main"
     description:
-      path: "xterm.dart"
-      relative: true
-    source: path
+      path: "."
+      ref: HEAD
+      resolved-ref: "7e82ab2c5b798fb8bc79e9fc730ccfe547ca2ce2"
+      url: "https://github.com/oraraka-deko/xterm.dart"
+    source: git
     version: "4.0.0"
   yaml:
     dependency: transitive

@@ -12,10 +12,32 @@ import 'script.dart';
 import 'utils.dart';
 import 'workspace.dart';
 
+class ShellTab {
+  final String id;
+  String name;
+  final Pty pty;
+  final Terminal terminal;
+  final TerminalController terminalController;
+
+  ShellTab({
+    required this.id,
+    required this.name,
+    required this.pty,
+    required this.terminal,
+    required this.terminalController,
+  });
+}
+
 class HomeController extends GetxController {
+  final Workspace workspace;
+  HomeController({required this.workspace});
+
+  bool isRunning = true;
   bool vsCodeStaring = false;
-  SettingNode privacySetting = 'privacy'.setting;
+  Setting privacySetting = 'privacy'.setting;
   Pty? pseudoTerminal;
+  late final TerminalController defaultTerminalController = TerminalController();
+
   late Terminal terminal = Terminal(
     maxLines: 10000,
     onResize: (width, height, pixelWidth, pixelHeight) {
@@ -25,14 +47,41 @@ class HomeController extends GetxController {
       pseudoTerminal?.writeString(data);
     },
   );
-  bool webviewHasOpen = false;
-  bool get isShellOnly => WorkspaceManager.activeWorkspace?.type == 'shell';
 
-  File progressFile = File('${RuntimeEnvir.tmpPath}/progress');
-  File progressDesFile = File('${RuntimeEnvir.tmpPath}/progress_des');
+  final List<ShellTab> shellTabs = [];
+  int activeTabIndex = 0;
+
+  Terminal get activeTerminal {
+    if (isShellOnly && shellTabs.isNotEmpty && activeTabIndex < shellTabs.length) {
+      return shellTabs[activeTabIndex].terminal;
+    }
+    return terminal;
+  }
+
+  TerminalController get activeTerminalController {
+    if (isShellOnly && shellTabs.isNotEmpty && activeTabIndex < shellTabs.length) {
+      return shellTabs[activeTabIndex].terminalController;
+    }
+    return defaultTerminalController;
+  }
+
+  Pty? get activePty {
+    if (isShellOnly && shellTabs.isNotEmpty && activeTabIndex < shellTabs.length) {
+      return shellTabs[activeTabIndex].pty;
+    }
+    return pseudoTerminal;
+  }
+
+  bool webviewHasOpen = false;
+  bool get isShellOnly => workspace.type == 'shell';
+
+  File get progressFile => File('${RuntimeEnvir.tmpPath}/progress_${workspace.id}');
+  File get progressDesFile => File('${RuntimeEnvir.tmpPath}/progress_des_${workspace.id}');
   double progress = 0.0;
   double step = 17;
   String currentProgress = '';
+  StreamSubscription? _progressSub;
+  StreamSubscription? _progressDesSub;
 
   // 进度 +1
   // Progress +1
@@ -70,7 +119,7 @@ class HomeController extends GetxController {
           completer.complete();
         }
       } else {
-        if (event.contains('http://0.0.0.0:${Config.port}')) {
+        if (event.contains('http://0.0.0.0:${workspace.port}')) {
           Log.e(event);
           if (!completer.isCompleted) {
             completer.complete();
@@ -87,15 +136,96 @@ class HomeController extends GetxController {
     });
     await completer.future;
     bumpProgress();
+
+    if (isShellOnly && shellTabs.isEmpty && pseudoTerminal != null) {
+      shellTabs.add(ShellTab(
+        id: 'tab_${DateTime.now().millisecondsSinceEpoch}',
+        name: 'Shell 1',
+        pty: pseudoTerminal!,
+        terminal: terminal,
+        terminalController: defaultTerminalController,
+      ));
+    }
+
     await Future.delayed(const Duration(milliseconds: 100));
     if (!isShellOnly) {
       webviewHasOpen = true;
-      openWebView(port: Config.port);
+      openWebView(port: workspace.port);
     }
     Future.delayed(const Duration(milliseconds: 2000), () {
       vsCodeStaring = false;
       update();
     });
+  }
+
+  void addNewTab([String? customName]) {
+    if (!isShellOnly) return;
+    final tabIndex = shellTabs.length + 1;
+    final tabName = customName ?? 'Shell $tabIndex';
+    final newTerminalController = TerminalController();
+
+    Pty? newPty;
+    final newTerminal = Terminal(
+      maxLines: 10000,
+      onResize: (width, height, pixelWidth, pixelHeight) {
+        newPty?.resize(height, width);
+      },
+      onOutput: (data) {
+        newPty?.writeString(data);
+      },
+    );
+
+    newPty = createPTY(rows: newTerminal.viewHeight, columns: newTerminal.viewWidth);
+
+    final tab = ShellTab(
+      id: 'tab_${DateTime.now().millisecondsSinceEpoch}_${shellTabs.length}',
+      name: tabName,
+      pty: newPty,
+      terminal: newTerminal,
+      terminalController: newTerminalController,
+    );
+
+    const Utf8Decoder decoder = Utf8Decoder(allowMalformed: true);
+    newPty.output.cast<List<int>>().transform(decoder).listen((event) {
+      newTerminal.write(event);
+    });
+
+    newPty.writeString('source ${RuntimeEnvir.homePath}/common_${workspace.id}.sh\nlogin_ubuntu\n');
+
+    shellTabs.add(tab);
+    activeTabIndex = shellTabs.length - 1;
+    update();
+  }
+
+  void selectTab(int index) {
+    if (index >= 0 && index < shellTabs.length) {
+      activeTabIndex = index;
+      update();
+    }
+  }
+
+  void closeTab(int index) {
+    if (index >= 0 && index < shellTabs.length) {
+      final tab = shellTabs[index];
+      try {
+        tab.pty.writeString('exit\n');
+      } catch (_) {}
+      shellTabs.removeAt(index);
+      if (activeTabIndex >= shellTabs.length) {
+        activeTabIndex = (shellTabs.length - 1).clamp(0, 9999);
+      }
+      if (shellTabs.isEmpty) {
+        addNewTab();
+      }
+      update();
+    }
+  }
+
+  void renameTab(int index, String newName) {
+    if (index >= 0 && index < shellTabs.length && newName.trim().isNotEmpty) {
+      shellTabs[index].name = newName.trim();
+      update();
+    }
   }
 
   // 初始化环境，将动态库中的文件链接到数据目录
@@ -106,18 +236,13 @@ class HomeController extends GetxController {
     Log.i('libPath -> $libPath');
 
     for (int i = 0; i < androidFiles.length; i++) {
-      // when android target sdk > 28
-      // cannot execute file in /data/data/com.xxx/files/usr/bin
-      // so we need create a link to /data/data/com.xxx/files/usr/bin
       final sourcePath = '$libPath/${androidFiles[i]}';
       String fileName = androidFiles[i].replaceAll(RegExp('^lib|\\.so\$'), '');
       String filePath = '${RuntimeEnvir.binPath}/$fileName';
-      // custom path, termux-api will invoke
       File file = File(filePath);
       FileSystemEntityType type = await FileSystemEntity.type(filePath);
       Log.i('$fileName type -> $type');
       if (type != FileSystemEntityType.notFound && type != FileSystemEntityType.link) {
-        // old version adb is plain file
         Log.i('find plain file -> $fileName, delete it');
         await file.delete();
       }
@@ -139,7 +264,8 @@ class HomeController extends GetxController {
   void syncProgress() {
     progressFile.createSync(recursive: true);
     progressFile.writeAsStringSync('0');
-    progressFile.watch(events: FileSystemEvent.all).listen((event) async {
+    _progressSub?.cancel();
+    _progressSub = progressFile.watch(events: FileSystemEvent.all).listen((event) async {
       if (event.type == FileSystemEvent.modify) {
         String content = await progressFile.readAsString();
         Log.e('content -> $content');
@@ -153,7 +279,8 @@ class HomeController extends GetxController {
     });
     progressDesFile.createSync(recursive: true);
     progressDesFile.writeAsStringSync('');
-    progressDesFile.watch(events: FileSystemEvent.all).listen((event) async {
+    _progressDesSub?.cancel();
+    _progressDesSub = progressDesFile.watch(events: FileSystemEvent.all).listen((event) async {
       if (event.type == FileSystemEvent.modify) {
         String content = await progressDesFile.readAsString();
         currentProgress = content;
@@ -215,41 +342,33 @@ class HomeController extends GetxController {
   }
 
   Future<void> loadCodeServer() async {
+    isRunning = true;
     vsCodeStaring = true;
     update();
-    final activeWS = WorkspaceManager.activeWorkspace;
-    if (activeWS != null) {
-      Config.activeWorkspaceId = activeWS.id;
-      Config.port = activeWS.port;
-    }
+    Config.activeWorkspaceId = workspace.id;
+    Config.port = workspace.port;
+
     loadCodeVersion();
     bumpProgress();
-    // 创建相关文件夹
-    // Create related folders
     Directory(RuntimeEnvir.tmpPath).createSync(recursive: true);
     Directory(RuntimeEnvir.homePath).createSync(recursive: true);
     Directory(RuntimeEnvir.binPath).createSync(recursive: true);
     bumpProgress();
     await initEnvir();
     bumpProgress();
-    // -
     setProgress('${S.current.create_terminal_obj}...');
     pseudoTerminal = createPTY(rows: terminal.viewHeight, columns: terminal.viewWidth);
     bumpProgress();
-    // -
     terminal.writeProgress('${S.current.current_code_version}:${Config.codeServerVersion} [${useCustomCodeServer ? 'custom' : ''}]');
     setProgress('${S.current.copy_proot_distro}...');
     await AssetsUtils.copyAssetToPath('assets/proot-distro.zip', '${RuntimeEnvir.homePath}/proot-distro.zip');
     bumpProgress();
-    // -
     setProgress('${S.current.copy_ubuntu}...');
     await AssetsUtils.copyAssetToPath('assets/${Config.ubuntuFileName}', '${RuntimeEnvir.homePath}/${Config.ubuntuFileName}');
     bumpProgress();
-    // -
     setProgress('${S.current.create_busybox_symlink}...');
     createBusyboxLink();
     bumpProgress();
-    // -
     String codeServerName = 'code-server-${Config.codeServerVersion}-linux-arm64.tar.gz';
     String sourcePath = useCustomCodeServer ? '/sdcard/$codeServerName' : 'assets/$codeServerName';
     setProgress('${S.current.copy_code_server('[$sourcePath]')} ${RuntimeEnvir.tmpPath}...');
@@ -272,7 +391,6 @@ class HomeController extends GetxController {
       terminal.write('Copy code server failed -> $e');
       return;
     }
-    // -
     final codeServerPath = '${RuntimeEnvir.tmpPath}/$codeServerName';
     setProgress('${S.current.gen_script}...');
     String fixHardLinkShell = '';
@@ -286,10 +404,10 @@ class HomeController extends GetxController {
     }
     bumpProgress();
     bumpProgress();
-    // -
     vsCodeStartWhenSuccessBind();
     bumpProgress();
-    File('${RuntimeEnvir.homePath}/common.sh').writeAsStringSync('$commonScript\n$fixHardLinkShell');
+    final scriptContent = '${getCommonScript(workspace)}\n$fixHardLinkShell';
+    File('${RuntimeEnvir.homePath}/common_${workspace.id}.sh').writeAsStringSync(scriptContent);
     bumpProgress();
     startVsCode(pseudoTerminal!);
   }
@@ -297,29 +415,52 @@ class HomeController extends GetxController {
   Future<void> startVsCode(Pty pseudoTerminal) async {
     vsCodeStaring = true;
     update();
-    pseudoTerminal.writeString('source ${RuntimeEnvir.homePath}/common.sh\nstart_vs_code\n');
-    // pseudoTerminal.writeString('bash\n');
+    pseudoTerminal.writeString('source ${RuntimeEnvir.homePath}/common_${workspace.id}.sh\nstart_vs_code\n');
+  }
+
+  Future<void> powerOff() async {
+    isRunning = false;
+    vsCodeStaring = false;
+    // 1. Exit all shell tabs cleanly
+    for (final tab in shellTabs) {
+      try {
+        tab.pty.writeString('exit\n');
+      } catch (_) {}
+    }
+    // 2. Stop code-server if vscode workspace and exit primary pty
+    try {
+      if (pseudoTerminal != null) {
+        if (!isShellOnly) {
+          pseudoTerminal!.writeString('pkill -9 -f code-server\nexit\n');
+        } else {
+          pseudoTerminal!.writeString('exit\n');
+        }
+      }
+    } catch (_) {}
+    // 3. Cancel watchers
+    _progressSub?.cancel();
+    _progressDesSub?.cancel();
+    await Future.delayed(const Duration(milliseconds: 300));
+    update();
   }
 
   @override
   void onInit() {
     super.onInit();
-    // 为 Google Play 上架做准备
-    // For Google Play
     Future.delayed(Duration.zero, () async {
       if (privacySetting.get() == null) {
-                    privacySetting.set(true);
-
-        // await Get.to(PrivacyAgreePage(
-        //   onAgreeTap: () {
-        //     privacySetting.set(true);
-        //     Get.back();
-        //   },
-       // )
-       // );
+        privacySetting.set(true);
       }
       syncProgress();
       loadCodeServer();
     });
   }
+
+  @override
+  void onClose() {
+    _progressSub?.cancel();
+    _progressDesSub?.cancel();
+    super.onClose();
+  }
 }
+

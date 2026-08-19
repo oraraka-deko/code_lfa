@@ -5,22 +5,23 @@ import 'workspace.dart';
 
 // proot distro，ubuntu path
 String get prootDistroPath => '${RuntimeEnvir.usrPath}/var/lib/proot-distro';
-String get ubuntuPath => '$prootDistroPath/installed-rootfs/${Config.activeWorkspaceId}';
+String ubuntuPathFor(String workspaceId) => '$prootDistroPath/installed-rootfs/$workspaceId';
+String get ubuntuPath => ubuntuPathFor(WorkspaceManager.activeWorkspace?.id ?? Config.activeWorkspaceId);
 String get ubuntuName => Config.ubuntuFileName.replaceAll(RegExp('-pd.*'), '');
 
-String get common => '''
+String getCommon(Workspace workspace) => '''
 export TMPDIR=${RuntimeEnvir.tmpPath}
 export BIN=${RuntimeEnvir.binPath}
-export UBUNTU_PATH=$ubuntuPath
+export UBUNTU_PATH=${ubuntuPathFor(workspace.id)}
 export UBUNTU=${Config.ubuntuFileName}
 export UBUNTU_NAME=$ubuntuName
-export CSPORT=${Config.port}
+export CSPORT=${workspace.port}
 export CSVERSION=${Config.codeServerVersion}
 export L_NOT_INSTALLED=${S.current.uninstalled}
 export L_INSTALLING=${S.current.installing}
 export L_INSTALLED=${S.current.installed}
-export WORKSPACE_ID=${Config.activeWorkspaceId}
-export WORKSPACE_TYPE=${WorkspaceManager.activeWorkspace?.type ?? 'vscode'}
+export WORKSPACE_ID=${workspace.id}
+export WORKSPACE_TYPE=${workspace.type}
 clear_lines(){
   printf "\\033[1A" # Move cursor up one line
   printf "\\033[K"  # Clear the line
@@ -29,15 +30,15 @@ clear_lines(){
 }
 progress_echo(){
   echo -e "\\033[31m- \$@\\033[0m"
-  echo "\$@" > "\$TMPDIR/progress_des"
+  echo "\$@" > "\$TMPDIR/progress_des_${workspace.id}"
 }
 bump_progress(){
   current=0
-  if [ -f "\$TMPDIR/progress" ]; then
-    current=\$(cat "\$TMPDIR/progress" 2>/dev/null || echo 0)
+  if [ -f "\$TMPDIR/progress_${workspace.id}" ]; then
+    current=\$(cat "\$TMPDIR/progress_${workspace.id}" 2>/dev/null || echo 0)
   fi
   next=\$((current + 1))
-  printf "\$next" > "\$TMPDIR/progress"
+  printf "\$next" > "\$TMPDIR/progress_${workspace.id}"
 }
 ''';
 
@@ -164,6 +165,7 @@ install_vs_code(){
     return
   fi
   if [ ! -d "$UBUNTU_PATH/opt/code-server-$CSVERSION-linux-arm64" ];then
+    mkdir -p $UBUNTU_PATH/opt 2>/dev/null
     tar zxfh $TMPDIR/code-server-$CSVERSION-linux-arm64.tar.gz -C $UBUNTU_PATH/opt | while read line; do
       echo -ne "\033[2K\r$line"
     done
@@ -186,8 +188,8 @@ login_ubuntu(){
 }
 ''';
 
-String get commonScript => '''
-$common
+String getCommonScript(Workspace workspace) => '''
+${getCommon(workspace)}
 $changeUbuntuNobleSource
 $installVSCodeServer
 $genCodeConfig
@@ -215,3 +217,14 @@ start_vs_code(){
   login_ubuntu
 }
 ''';
+
+String get commonScript => getCommonScript(
+      WorkspaceManager.activeWorkspace ??
+          Workspace(
+            id: Config.activeWorkspaceId,
+            name: 'Default Workspace',
+            port: Config.port,
+            createTime: '',
+            type: 'vscode',
+          ),
+    );
